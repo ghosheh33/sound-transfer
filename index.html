@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>نقل بالصوت</title>
+  <meta name="description" content="نقل النصوص والصور والملفات بين هاتفين عبر الصوت فقط، بدون إنترنت أو بلوتوث.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 10v4M21 12h0" /></svg>
+      <h1>نقل بالصوت</h1>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="send" aria-selected="true">إرسال</button>
+      <button role="tab" data-tab="receive" aria-selected="false">استقبال</button>
+      <button role="tab" data-tab="help" aria-selected="false">طريقة الاستخدام</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- SEND -->
+    <section id="tab-send" class="panel" role="tabpanel">
+      <div class="card">
+        <h2>ماذا تريد أن ترسل؟</h2>
+        <div class="seg" id="kind">
+          <button data-kind="text" class="on">نص</button>
+          <button data-kind="image">صورة</button>
+          <button data-kind="file">ملف</button>
+        </div>
+
+        <div data-for="text">
+          <textarea id="text" rows="5" placeholder="اكتب رسالتك هنا…"></textarea>
+        </div>
+
+        <div data-for="image" hidden>
+          <label class="file-pick">
+            <input type="file" id="imageInput" accept="image/*">
+            <span>اختر صورة أو التقط واحدة</span>
+          </label>
+          <div class="img-opts" id="imgOpts" hidden>
+            <div class="preview-wrap"><img id="imgPreview" alt="معاينة الصورة كما ستصل"></div>
+            <div class="grid2">
+              <label>أقصى بُعد
+                <select id="imgDim">
+                  <option value="96">96 بكسل</option>
+                  <option value="160">160 بكسل</option>
+                  <option value="240" selected>240 بكسل</option>
+                  <option value="320">320 بكسل</option>
+                  <option value="480">480 بكسل</option>
+                  <option value="640">640 بكسل</option>
+                  <option value="1024">1024 بكسل</option>
+                </select>
+              </label>
+              <label>الصيغة
+                <select id="imgFormat">
+                  <option value="webp">WebP (أصغر)</option>
+                  <option value="jpeg">JPEG (معاينة تدريجية)</option>
+                </select>
+              </label>
+              <label class="full">الجودة <output id="imgQOut">0.5</output>
+                <input type="range" id="imgQ" min="0.1" max="0.9" step="0.05" value="0.5">
+              </label>
+              <label class="check full"><input type="checkbox" id="imgGray"> أبيض وأسود (حجم أصغر)</label>
+            </div>
+            <p class="muted" id="imgInfo"></p>
+          </div>
+        </div>
+
+        <div data-for="file" hidden>
+          <label class="file-pick">
+            <input type="file" id="fileInput">
+            <span>اختر ملفاً</span>
+          </label>
+          <p class="muted" id="fileInfo">الملفات الصغيرة فقط عملية (بضعة كيلوبايت).</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>الإعدادات</h2>
+        <div class="modes" id="modes"></div>
+        <div class="grid2">
+          <label>عدد مرات التكرار
+            <select id="passes">
+              <option value="1">مرة واحدة</option>
+              <option value="2" selected>مرتين (أضمن)</option>
+              <option value="3">3 مرات</option>
+              <option value="Infinity">حتى أوقفه</option>
+            </select>
+          </label>
+          <label>مستوى الصوت <output id="volOut">90%</output>
+            <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
+          </label>
+        </div>
+      </div>
+
+      <div class="card sticky">
+        <div class="summary" id="summary">—</div>
+        <div class="bar"><div id="sendBar"></div></div>
+        <p class="status" id="sendStatus">جاهز</p>
+        <button class="primary" id="sendBtn">إرسال بالصوت</button>
+      </div>
+    </section>
+
+    <!-- RECEIVE -->
+    <section id="tab-receive" class="panel" role="tabpanel" hidden>
+      <div class="card">
+        <div class="listen-row">
+          <button class="primary" id="listenBtn">ابدأ الاستماع</button>
+          <div class="meter" title="مستوى الميكروفون"><div id="meter"></div></div>
+        </div>
+        <p class="status" id="rxStatus">اضغط «ابدأ الاستماع» ثم ابدأ الإرسال من الهاتف الآخر.</p>
+        <p class="muted small" id="rxStats"></p>
+      </div>
+
+      <div class="card" id="current" hidden>
+        <h2 id="curTitle">جاري الاستقبال…</h2>
+        <p class="muted" id="curInfo"></p>
+        <div class="bar"><div id="rxBar"></div></div>
+        <div class="packets" id="packets"></div>
+        <div id="curBody"></div>
+      </div>
+
+      <div id="received"></div>
+    </section>
+
+    <!-- HELP -->
+    <section id="tab-help" class="panel" role="tabpanel" hidden>
+      <div class="card prose">
+        <h2>طريقة الاستخدام</h2>
+        <ol>
+          <li>افتح التطبيق على الهاتفين.</li>
+          <li>على الهاتف المستقبِل: «استقبال» ← «ابدأ الاستماع» واسمح باستخدام الميكروفون.</li>
+          <li>على الهاتف المرسِل: اختر النص أو الصورة أو الملف ثم «إرسال بالصوت».</li>
+          <li>ضع الهاتفين قريبين (10–50 سم)، مكبّر صوت المرسِل باتجاه ميكروفون المستقبِل.</li>
+        </ol>
+        <h3>نصائح</h3>
+        <ul>
+          <li>ارفع صوت المرسِل، وأطفئ وضع الصامت على آيفون.</li>
+          <li>إذا فشلت حزم كثيرة: اختر الوضع «متين» وقرّب الهاتفين وقلّل الضوضاء.</li>
+          <li>الصور تُصغَّر قبل الإرسال؛ ترى في المعاينة الصورة كما ستصل بالضبط.</li>
+          <li>إذا بدأ المستقبِل متأخراً أو فاتته حزم، تكمل في الدورة الثانية من التكرار.</li>
+          <li>اترك الشاشة مفتوحة أثناء النقل.</li>
+        </ul>
+        <h3>كيف يعمل؟</h3>
+        <p>تُقسَّم البيانات إلى حزم صغيرة. كل حزمة تبدأ بصفّارة متصاعدة للمزامنة، ثم نغمات متوازية في 6–8 نطاقات ترددية بين 1.5 و10 كيلوهرتز؛ كل نغمة تحمل 4 بتات. يحمي كل حزمة ترميز ريد-سولومون يصحح الأخطاء، وفحص CRC يتأكد من سلامتها.</p>
+        <table>
+          <thead><tr><th>الوضع</th><th>السرعة الفعلية</th><th>صورة 5 ك.ب</th></tr></thead>
+          <tbody id="modeTable"></tbody>
+        </table>
+        <p class="muted small">لا يرسل التطبيق أي بيانات عبر الإنترنت؛ كل المعالجة تتم داخل الهاتف.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
