@@ -1,10 +1,10 @@
-// Acoustic modem: parallel 16-FSK with chirp synchronisation.
+// Acoustic modem: parallel M-FSK with chirp synchronisation.
 //
 // Frame on air:
 //   [chirp 100ms] [gap 20ms] [mode slot 60ms] [data slots ...] [tail 30ms]
 // Every data slot carries one tone in each of G frequency groups; each tone
-// is one of 16 frequencies => 4 bits per group per slot. A byte uses two
-// consecutive slots of one group (high nibble, then low nibble).
+// is one of `tones` frequencies (16 => 4 bits, 4 => 2 bits). A byte uses
+// consecutive slots of one group (most significant symbol first).
 // The codeword (Reed–Solomon, n bytes) is scrambled before modulation so the
 // tones are evenly used; the receiver estimates each tone's gain from the
 // frame itself (equalisation) and uses low-confidence bytes as erasures.
@@ -14,26 +14,31 @@ import { rsEncode, rsDecode } from './rs.js';
 import { crc32 } from './crc32.js';
 
 export const MODES = [
-  { id: 0, key: 'robust', ts: 0.040, tg: 0.020, groups: 6, f0: 1500, n: 96, nsym: 32 },
-  { id: 1, key: 'normal', ts: 0.024, tg: 0.008, groups: 8, f0: 1500, n: 160, nsym: 32 },
-  { id: 2, key: 'fast', ts: 0.016, tg: 0.006, groups: 8, f0: 1500, n: 200, nsym: 40 },
+  { id: 0, key: 'robust', ts: 0.040, tg: 0.020, groups: 6, tones: 16, f0: 1500, n: 96, nsym: 32 },
+  { id: 1, key: 'normal', ts: 0.024, tg: 0.008, groups: 8, tones: 16, f0: 1500, n: 160, nsym: 32 },
+  { id: 2, key: 'fast', ts: 0.016, tg: 0.006, groups: 8, tones: 16, f0: 1500, n: 248, nsym: 40 },
+  // 32 groups of 4-FSK packed side by side: twice the bits per slot of 'fast'.
+  { id: 3, key: 'turbo', ts: 0.016, tg: 0.006, groups: 32, tones: 4, f0: 1500, n: 224, nsym: 48 },
 ];
-const TONES = 16;
 
 for (const m of MODES) {
+  m.bits = Math.log2(m.tones);
+  m.spb = 8 / m.bits; // symbols per byte
   m.spacing = 1 / m.ts;
-  m.groupWidth = (TONES + 1) * m.spacing;
+  // 16-FSK groups keep one empty tone between them; 4-FSK groups are packed.
+  m.groupWidth = (m.tones + (m.tones >= 16 ? 1 : 0)) * m.spacing;
   m.slotDur = m.ts + m.tg;
-  m.slots = (2 * m.n) / m.groups;
+  if (m.n % m.groups) throw new Error('n must be a multiple of groups');
+  m.slots = (m.n / m.groups) * m.spb;
   m.k = m.n - m.nsym; // bytes protected by RS
   m.content = m.k - 4; // bytes available to the protocol (CRC32 appended)
   m.freqs = [];
   for (let g = 0; g < m.groups; g++) {
     const row = [];
-    for (let t = 0; t < TONES; t++) row.push(m.f0 + g * m.groupWidth + t * m.spacing);
+    for (let t = 0; t < m.tones; t++) row.push(m.f0 + g * m.groupWidth + t * m.spacing);
     m.freqs.push(row);
   }
-  m.maxFreq = m.freqs[m.groups - 1][TONES - 1];
+  m.maxFreq = m.freqs[m.groups - 1][m.tones - 1];
 }
 
 const CHIRP_DUR = 0.1;
@@ -120,19 +125,24 @@ export function modulate(content, mode, sr) {
   out.set(chirp(sr).map((v) => v * 0.9));
   addTones(out, sr, CHIRP_DUR + GAP, MODE_TS + MODE_TG, [MODE_FREQS[mode.id]], 0.9);
   const G = mode.groups;
-  const amp = 0.95 / G;
   // Pseudo-random fixed phases keep the peak level down when tones add up.
   const phases = Array.from({ length: G }, (_, g) => (g * g * 2.399) % (2 * Math.PI));
+  const { spb, bits } = mode;
+  const mask = mode.tones - 1;
   for (let s = 0; s < mode.slots; s++) {
-    const row = s >> 1;
-    const hi = (s & 1) === 0;
+    const row = Math.floor(s / spb);
+    const shift = bits * (spb - 1 - (s % spb));
     const freqs = [];
-    for (let g = 0; g < G; g++) {
-      const b = cw[row * G + g];
-      freqs.push(mode.freqs[g][hi ? b >> 4 : b & 15]);
-    }
-    addTones(out, sr, DATA_START + s * mode.slotDur, mode.slotDur, freqs, amp, phases);
+    for (let g = 0; g < G; g++) freqs.push(mode.freqs[g][(cw[row * G + g] >> shift) & mask]);
+    addTones(out, sr, DATA_START + s * mode.slotDur, mode.slotDur, freqs, 1, phases);
   }
+  // Scale the data section to its real peak (tones rarely all peak together),
+  // which is several dB louder than dividing by the number of tones.
+  const d0 = Math.round(DATA_START * sr);
+  let peak = 0;
+  for (let i = d0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const k = peak > 0 ? 0.9 / peak : 1;
+  for (let i = d0; i < out.length; i++) out[i] *= k;
   return out;
 }
 
@@ -152,6 +162,7 @@ function goertzel(x, start, len, freq, sr) {
 /** Demodulates and decodes a frame whose data slots start at `pos`. */
 export function demodulate(x, pos, mode, sr) {
   const G = mode.groups;
+  const TONES = mode.tones;
   const W = Math.round(mode.ts * sr);
   const E = new Array(mode.slots);
   for (let s = 0; s < mode.slots; s++) {
@@ -170,7 +181,9 @@ export function demodulate(x, pos, mode, sr) {
     for (let t = 0; t < TONES; t++) {
       let sum = 0;
       let cnt = 0;
-      for (let d = -2; d <= 2; d++) {
+      // Few tones per group: each tone repeats often enough to measure alone.
+      const R = TONES >= 16 ? 2 : 0;
+      for (let d = -R; d <= R; d++) {
         const tt = t + d;
         if (tt < 0 || tt >= TONES) continue;
         sum += mean[g * TONES + tt];
@@ -179,7 +192,7 @@ export function demodulate(x, pos, mode, sr) {
       gain[g * TONES + t] = sum / cnt + 1e-12;
     }
   }
-  const nib = new Uint8Array(mode.slots * G);
+  const sym = new Uint8Array(mode.slots * G);
   const conf = new Float64Array(mode.slots * G);
   for (let s = 0; s < mode.slots; s++) {
     const row = E[s];
@@ -191,7 +204,7 @@ export function demodulate(x, pos, mode, sr) {
         const v = row[g * TONES + t] / gain[g * TONES + t];
         if (v > b1) { b2 = b1; b1 = v; best = t; } else if (v > b2) b2 = v;
       }
-      nib[s * G + g] = best;
+      sym[s * G + g] = best;
       conf[s * G + g] = b1 / (b2 + 1e-12);
     }
   }
@@ -200,14 +213,20 @@ export function demodulate(x, pos, mode, sr) {
   for (let b = 0; b < mode.n; b++) {
     const g = b % G;
     const r = Math.floor(b / G);
-    const h = (2 * r) * G + g;
-    const l = (2 * r + 1) * G + g;
-    cw[b] = ((nib[h] << 4) | nib[l]) ^ SCRAMBLE[b];
-    bconf[b] = Math.min(conf[h], conf[l]);
+    let v = 0;
+    let c = Infinity;
+    for (let j = 0; j < mode.spb; j++) {
+      const idx = (r * mode.spb + j) * G + g;
+      v = (v << mode.bits) | sym[idx];
+      c = Math.min(c, conf[idx]);
+    }
+    cw[b] = v ^ SCRAMBLE[b];
+    bconf[b] = c;
   }
-  let quality = 0;
-  for (const c of bconf) quality += Math.min(c, 20);
-  quality /= mode.n;
+  // Signal quality, 0..20: share of bytes decided with a clear margin.
+  let clear = 0;
+  for (const c of bconf) if (c > 2.5) clear++;
+  const quality = (20 * clear) / mode.n;
 
   const order = Array.from(bconf.keys()).sort((a, b) => bconf[a] - bconf[b]);
   for (const nErase of [0, mode.nsym / 4, mode.nsym / 2, (3 * mode.nsym) / 4, mode.nsym - 2]) {

@@ -51,7 +51,8 @@
                 <select id="imgDim">
                   <option value="96">96 بكسل</option>
                   <option value="160">160 بكسل</option>
-                  <option value="240" selected>240 بكسل</option>
+                  <option value="200" selected>200 بكسل</option>
+                  <option value="240">240 بكسل</option>
                   <option value="320">320 بكسل</option>
                   <option value="480">480 بكسل</option>
                   <option value="640">640 بكسل</option>
@@ -64,8 +65,8 @@
                   <option value="jpeg">JPEG (معاينة تدريجية)</option>
                 </select>
               </label>
-              <label class="full">الجودة <output id="imgQOut">0.5</output>
-                <input type="range" id="imgQ" min="0.1" max="0.9" step="0.05" value="0.5">
+              <label class="full">الجودة <output id="imgQOut">0.4</output>
+                <input type="range" id="imgQ" min="0.1" max="0.9" step="0.05" value="0.4">
               </label>
               <label class="check full"><input type="checkbox" id="imgGray"> أبيض وأسود (حجم أصغر)</label>
             </div>
@@ -86,15 +87,23 @@
         <h2>الإعدادات</h2>
         <div class="modes" id="modes"></div>
         <div class="grid2">
-          <label>عدد مرات التكرار
+          <label>الحماية من الفقد
+            <select id="redundancy">
+              <option value="0">بدون</option>
+              <option value="10">10٪</option>
+              <option value="20" selected>20٪ (مُوصى)</option>
+              <option value="35">35٪</option>
+              <option value="50">50٪</option>
+            </select>
+          </label>
+          <label>عدد مرات الإرسال
             <select id="passes">
-              <option value="1">مرة واحدة</option>
-              <option value="2" selected>مرتين (أضمن)</option>
-              <option value="3">3 مرات</option>
+              <option value="1" selected>مرة واحدة</option>
+              <option value="2">مرتين</option>
               <option value="Infinity">حتى أوقفه</option>
             </select>
           </label>
-          <label>مستوى الصوت <output id="volOut">90%</output>
+          <label class="full">مستوى الصوت <output id="volOut">90%</output>
             <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
           </label>
         </div>
@@ -143,15 +152,16 @@
         <h3>نصائح</h3>
         <ul>
           <li>ارفع صوت المرسِل، وأطفئ وضع الصامت على آيفون.</li>
-          <li>إذا فشلت حزم كثيرة: اختر الوضع «متين» وقرّب الهاتفين وقلّل الضوضاء.</li>
+          <li>ابدأ بالوضع «فائق». إذا ظهرت حزم تالفة كثيرة: قرّب الهاتفين، أو اختر وضعاً أبطأ.</li>
+          <li>«الحماية من الفقد» ترسل حزماً إضافية قليلة تُعيد بناء ما يضيع، فلا حاجة لإعادة الإرسال كاملاً.</li>
           <li>الصور تُصغَّر قبل الإرسال؛ ترى في المعاينة الصورة كما ستصل بالضبط.</li>
-          <li>إذا بدأ المستقبِل متأخراً أو فاتته حزم، تكمل في الدورة الثانية من التكرار.</li>
+          <li>أصغر صورة = أسرع نقل: 200 بكسل بجودة 0.4 تكفي غالباً لمعرفة محتوى الصورة.</li>
           <li>اترك الشاشة مفتوحة أثناء النقل.</li>
         </ul>
         <h3>كيف يعمل؟</h3>
-        <p>تُقسَّم البيانات إلى حزم صغيرة. كل حزمة تبدأ بصفّارة متصاعدة للمزامنة، ثم نغمات متوازية في 6–8 نطاقات ترددية بين 1.5 و10 كيلوهرتز؛ كل نغمة تحمل 4 بتات. يحمي كل حزمة ترميز ريد-سولومون يصحح الأخطاء، وفحص CRC يتأكد من سلامتها.</p>
+        <p>تُقسَّم البيانات إلى حزم صغيرة. كل حزمة تبدأ بصفّارة متصاعدة للمزامنة، ثم نغمات متوازية في 6–32 نطاقاً ترددياً بين 1.5 و10 كيلوهرتز. يحمي كل حزمة ترميز ريد-سولومون يصحح الأخطاء، وفحص CRC يتأكد من سلامتها، وحزم التصحيح الإضافية تعيد بناء الحزم الضائعة.</p>
         <table>
-          <thead><tr><th>الوضع</th><th>السرعة الفعلية</th><th>صورة 5 ك.ب</th></tr></thead>
+          <thead><tr><th>الوضع</th><th>السرعة الفعلية</th><th>صورة 3 ك.ب</th></tr></thead>
           <tbody id="modeTable"></tbody>
         </table>
         <p class="muted small">لا يرسل التطبيق أي بيانات عبر الإنترنت؛ كل المعالجة تتم داخل الهاتف.</p>

@@ -119,7 +119,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 }
 .preview-wrap img { max-width: 100%; max-height: 260px; image-rendering: auto; border-radius: 6px; }
 
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .mode {
   border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 8px;
   background: none; text-align: center; cursor: pointer; display: grid; gap: 2px;
@@ -153,6 +153,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .packets { display: flex; flex-wrap: wrap; gap: 3px; margin: 12px 0; direction: ltr; }
 .packets i { width: 10px; height: 10px; border-radius: 2px; background: var(--cell); }
 .packets i.ok { background: var(--accent); }
+.packets i.rec { background: var(--warn); }
 
 .result img { max-width: 100%; border-radius: 8px; display: block; margin: 10px auto; }
 .result pre {
@@ -174,9 +175,11 @@ th, td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--lin
   text-align: center;
 }
 
-@media (max-width: 380px) {
+@media (max-width: 560px) {
+  .modes { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 340px) {
   .grid2 { grid-template-columns: 1fr; }
-  .modes { grid-template-columns: 1fr; }
 }
 #received { display: grid; gap: 14px; }
 a.secondary { color: var(--text); display: inline-block; }

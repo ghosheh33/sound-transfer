@@ -1,5 +1,5 @@
 // Offline cache for the app shell: once opened, the app works with no network.
-const CACHE = 'sound-transfer-v1';
+const CACHE = 'sound-transfer-v2';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'js/app.js', 'js/audio.js', 'js/media.js', 'js/modem.js', 'js/protocol.js', 'js/rs.js', 'js/fft.js', 'js/crc32.js',

@@ -1,6 +1,6 @@
 import { MODES, Receiver, frameDuration } from './modem.js';
 import {
-  buildTransfer, passOrder, estimateSeconds, payloadSize, Assembler, KIND, FLAG_DEFLATE, FRAME_PAUSE,
+  buildTransfer, passOrder, estimateSeconds, payloadSize, layout, Assembler, KIND, FLAG_DEFLATE, FRAME_PAUSE,
 } from './protocol.js';
 import { startMic, Transmitter } from './audio.js';
 import {
@@ -8,8 +8,8 @@ import {
 } from './media.js';
 
 const $ = (s) => document.querySelector(s);
-const MODE_LABEL = ['متين', 'عادي', 'سريع'];
-const MODE_HINT = ['للضوضاء والمسافة', 'متوازن', 'هاتفان متلاصقان'];
+const MODE_LABEL = ['متين', 'عادي', 'سريع', 'فائق'];
+const MODE_HINT = ['ضوضاء أو مسافة', 'متوازن', 'هاتفان قريبان', 'متلاصقان وهدوء'];
 
 function toast(msg, ms = 3500) {
   const t = $('#toast');
@@ -52,7 +52,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------- Send ----------
-const state = { kind: 'text', mode: 1, image: null, imageOut: null, file: null, prepared: null };
+const state = { kind: 'text', mode: 3, image: null, imageOut: null, file: null, prepared: null };
 
 const modesEl = $('#modes');
 MODES.forEach((m, i) => {
@@ -67,7 +67,7 @@ MODES.forEach((m, i) => {
   modesEl.appendChild(b);
 });
 $('#modeTable').innerHTML = MODES.map((m, i) =>
-  `<tr><td>${MODE_LABEL[i]}</td><td>${Math.round(bytesPerSec(m) * 8)} بت/ث</td><td>${formatDuration(estimateSeconds(5000, m))}</td></tr>`,
+  `<tr><td>${MODE_LABEL[i]}</td><td>${Math.round(bytesPerSec(m) * 8)} بت/ث</td><td>${formatDuration(estimateSeconds(3000, m))}</td></tr>`,
 ).join('');
 
 $('#kind').addEventListener('click', (e) => {
@@ -136,6 +136,8 @@ $('#vol').addEventListener('input', () => {
   tx.setVolume(Number($('#vol').value));
 });
 $('#passes').addEventListener('change', () => refresh());
+$('#redundancy').addEventListener('change', () => refresh());
+const redundancy = () => Number($('#redundancy').value);
 
 /** Builds the bytes to send for the current input. */
 async function payload() {
@@ -168,8 +170,9 @@ async function refresh() {
     return;
   }
   const packets = Math.ceil(p.bytes.length / payloadSize(m));
-  const one = estimateSeconds(p.bytes.length, m);
-  $('#summary').innerHTML = `الحجم <b>${formatBytes(p.bytes.length)}</b>${p.flags & FLAG_DEFLATE ? ' (مضغوط)' : ''} · ${packets} حزمة · المدة <b>${formatDuration(one)}</b>${passes > 1 ? ` لكل دورة (الإجمالي ${formatDuration(one * passes)})` : ''}`;
+  const extra = layout(packets, redundancy()).parityTotal;
+  const one = estimateSeconds(p.bytes.length, m, 1, redundancy());
+  $('#summary').innerHTML = `الحجم <b>${formatBytes(p.bytes.length)}</b>${p.flags & FLAG_DEFLATE ? ' (مضغوط)' : ''} · ${packets} حزمة${extra ? ` + ${extra} للتصحيح` : ''} · المدة <b>${formatDuration(one)}</b>${passes > 1 ? ` لكل دورة (الإجمالي ${formatDuration(one * passes)})` : ''}`;
 }
 refresh();
 
@@ -187,7 +190,7 @@ $('#sendBtn').addEventListener('click', async () => {
   const m = MODES[state.mode];
   let t;
   try {
-    t = buildTransfer(p, m);
+    t = buildTransfer(p, m, redundancy());
   } catch {
     toast('الملف كبير جداً');
     return;
@@ -284,8 +287,9 @@ function onEvent(e) {
     stats.bad++;
     if (e.quality) stats.quality = e.quality;
     $('#rxStatus').textContent = 'حزمة تالفة — قرّب الهاتفين أو ارفع الصوت.';
-    if (stats.bad >= 4 && stats.bad > stats.ok && e.mode && e.mode.id > 0) {
-      $('#rxStatus').textContent = 'حزم تالفة كثيرة — جرّب الوضع «متين» على المرسِل.';
+    if (stats.bad >= 3 && stats.bad * 2 > stats.ok && e.mode && e.mode.id > 0) {
+      const slower = MODE_LABEL[e.mode.id === 3 ? 2 : e.mode.id - 1];
+      $('#rxStatus').textContent = `حزم تالفة كثيرة — قرّب الهاتفين، أو اختر وضعاً أبطأ («${slower}») على المرسِل.`;
     }
     showStats();
   }
@@ -315,7 +319,7 @@ let lastPreview = 0;
 let previewUrl = null;
 function renderCurrent(t) {
   const m = t.meta;
-  const got = t.packets.size;
+  const got = asm.have(t);
   if (!m) {
     $('#curTitle').textContent = 'جاري الاستقبال…';
     $('#curInfo').textContent = `${got} حزمة — بانتظار معلومات الملف`;
@@ -333,7 +337,7 @@ function renderCurrent(t) {
     if (grid.children.length !== m.total) {
       grid.innerHTML = '<i></i>'.repeat(m.total);
     }
-    for (const seq of t.packets.keys()) if (grid.children[seq]) grid.children[seq].className = 'ok';
+    for (const seq of t.packets.keys()) if (grid.children[seq]) grid.children[seq].className = t.recovered.has(seq) ? 'ok rec' : 'ok';
   }
   // Progressive preview for images (works best with JPEG).
   if (m.kind === KIND.IMAGE && !t.done && Date.now() - lastPreview > 1500) {
