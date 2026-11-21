@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/rs.test.mjs && node test/protocol.test.mjs && node test/sim.test.mjs"
+    "test": "node test/rs.test.mjs && node test/protocol.test.mjs && node test/sim.test.mjs && node test/session.test.mjs"
   }
 }

@@ -114,7 +114,8 @@ for (const mode of MODES) {
     const line = `${mode.key.padEnd(6)} | ${sc.name.padEnd(22)} | ${res.decoded}/${res.frames} decoded, ${res.fails} fails, ${res.ms.toFixed(0)} ms cpu, quality ${res.q} ${res.reasons}`;
     console.log(line);
     // Every mode must survive the realistic scenarios; only robust is required in the harshest one.
-    const required = mode.key !== 'robust' && sc.snrDb <= 12 ? 0 : res.frames;
+    // Ultra needs speakers that reach 13 kHz: not required through the simulated low-pass room.
+    const required = (mode.key !== 'robust' && sc.snrDb <= 12) || (mode.key === 'ultra' && sc.eq) ? 0 : res.frames;
     if (res.decoded < required) failed = true;
   }
 }

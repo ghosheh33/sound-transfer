@@ -14,13 +14,14 @@
 <body>
   <header class="top">
     <div class="brand">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 10v4M21 12h0" /></svg>
-      <h1>نقل بالصوت</h1>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 10v4" /></svg>
+      <h1 data-i18n="appName">نقل بالصوت</h1>
+      <button class="lang" id="langBtn" aria-label="Language">EN</button>
     </div>
     <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="send" aria-selected="true">إرسال</button>
-      <button role="tab" data-tab="receive" aria-selected="false">استقبال</button>
-      <button role="tab" data-tab="help" aria-selected="false">طريقة الاستخدام</button>
+      <button role="tab" data-tab="send" aria-selected="true" data-i18n="tabSend">إرسال</button>
+      <button role="tab" data-tab="receive" aria-selected="false" data-i18n="tabReceive">استقبال</button>
+      <button role="tab" data-tab="help" aria-selected="false" data-i18n="tabHelp">طريقة الاستخدام</button>
     </nav>
   </header>
 
@@ -28,92 +29,86 @@
     <!-- SEND -->
     <section id="tab-send" class="panel" role="tabpanel">
       <div class="card">
-        <h2>ماذا تريد أن ترسل؟</h2>
+        <h2 data-i18n="whatToSend"></h2>
         <div class="seg" id="kind">
-          <button data-kind="text" class="on">نص</button>
-          <button data-kind="image">صورة</button>
-          <button data-kind="file">ملف</button>
+          <button data-kind="text" class="on" data-i18n="kindText"></button>
+          <button data-kind="image" data-i18n="kindImage"></button>
+          <button data-kind="file" data-i18n="kindFile"></button>
         </div>
 
         <div data-for="text">
-          <textarea id="text" rows="5" placeholder="اكتب رسالتك هنا…"></textarea>
+          <textarea id="text" rows="5" data-i18n-ph="textPh" dir="auto"></textarea>
         </div>
 
         <div data-for="image" hidden>
           <label class="file-pick">
-            <input type="file" id="imageInput" accept="image/*">
-            <span>اختر صورة أو التقط واحدة</span>
+            <input type="file" id="imageInput" accept="image/*" multiple>
+            <span data-i18n="pickImages"></span>
           </label>
-          <div class="img-opts" id="imgOpts" hidden>
-            <div class="preview-wrap"><img id="imgPreview" alt="معاينة الصورة كما ستصل"></div>
-            <div class="grid2">
-              <label>أقصى بُعد
-                <select id="imgDim">
-                  <option value="96">96 بكسل</option>
-                  <option value="160">160 بكسل</option>
-                  <option value="200" selected>200 بكسل</option>
-                  <option value="240">240 بكسل</option>
-                  <option value="320">320 بكسل</option>
-                  <option value="480">480 بكسل</option>
-                  <option value="640">640 بكسل</option>
-                  <option value="1024">1024 بكسل</option>
-                </select>
-              </label>
-              <label>الصيغة
-                <select id="imgFormat">
-                  <option value="webp">WebP (أصغر)</option>
-                  <option value="jpeg">JPEG (معاينة تدريجية)</option>
-                </select>
-              </label>
-              <label class="full">الجودة <output id="imgQOut">0.4</output>
-                <input type="range" id="imgQ" min="0.1" max="0.9" step="0.05" value="0.4">
-              </label>
-              <label class="check full"><input type="checkbox" id="imgGray"> أبيض وأسود (حجم أصغر)</label>
-            </div>
-            <p class="muted" id="imgInfo"></p>
+          <div class="grid2" id="imgOpts" hidden>
+            <label><span data-i18n="maxDim"></span>
+              <select id="imgDim"></select>
+            </label>
+            <label><span data-i18n="format"></span>
+              <select id="imgFormat">
+                <option value="webp" data-i18n="webp"></option>
+                <option value="jpeg" data-i18n="jpeg"></option>
+              </select>
+            </label>
+            <label class="full"><span><span data-i18n="quality"></span> <output id="imgQOut">0.4</output></span>
+              <input type="range" id="imgQ" min="0.1" max="0.9" step="0.05" value="0.4">
+            </label>
+            <label class="check full"><input type="checkbox" id="imgGray"> <span data-i18n="gray"></span></label>
           </div>
         </div>
 
         <div data-for="file" hidden>
           <label class="file-pick">
-            <input type="file" id="fileInput">
-            <span>اختر ملفاً</span>
+            <input type="file" id="fileInput" multiple>
+            <span data-i18n="pickFiles"></span>
           </label>
-          <p class="muted" id="fileInfo">الملفات الصغيرة فقط عملية (بضعة كيلوبايت).</p>
+          <p class="muted small" data-i18n="filesHint"></p>
         </div>
+
+        <ul class="queue" id="queue"></ul>
       </div>
 
       <div class="card">
-        <h2>الإعدادات</h2>
+        <h2 data-i18n="settings"></h2>
+        <p class="label" data-i18n="speed"></p>
         <div class="modes" id="modes"></div>
-        <div class="grid2">
-          <label>الحماية من الفقد
+        <label class="check switch">
+          <input type="checkbox" id="arq" checked>
+          <span><b data-i18n="confirm"></b><br><span class="muted small" data-i18n="confirmHint"></span></span>
+        </label>
+        <div class="grid2" id="oneWayOpts" hidden>
+          <label><span data-i18n="protection"></span>
             <select id="redundancy">
-              <option value="0">بدون</option>
-              <option value="10">10٪</option>
-              <option value="20" selected>20٪ (مُوصى)</option>
-              <option value="35">35٪</option>
-              <option value="50">50٪</option>
+              <option value="0" data-i18n="none"></option>
+              <option value="10">10%</option>
+              <option value="20" selected></option>
+              <option value="35">35%</option>
+              <option value="50">50%</option>
             </select>
           </label>
-          <label>عدد مرات الإرسال
+          <label><span data-i18n="passes"></span>
             <select id="passes">
-              <option value="1" selected>مرة واحدة</option>
-              <option value="2">مرتين</option>
-              <option value="Infinity">حتى أوقفه</option>
+              <option value="1" selected data-i18n="once"></option>
+              <option value="2" data-i18n="twice"></option>
+              <option value="Infinity" data-i18n="untilStop"></option>
             </select>
-          </label>
-          <label class="full">مستوى الصوت <output id="volOut">90%</output>
-            <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
           </label>
         </div>
+        <label class="vol"><span><span data-i18n="volume"></span> <output id="volOut">90%</output></span>
+          <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
+        </label>
       </div>
 
       <div class="card sticky">
-        <div class="summary" id="summary">—</div>
+        <div class="summary" id="summary"></div>
         <div class="bar"><div id="sendBar"></div></div>
-        <p class="status" id="sendStatus">جاهز</p>
-        <button class="primary" id="sendBtn">إرسال بالصوت</button>
+        <p class="status" id="sendStatus" data-i18n="ready"></p>
+        <button class="primary" id="sendBtn" data-i18n="send"></button>
       </div>
     </section>
 
@@ -121,50 +116,37 @@
     <section id="tab-receive" class="panel" role="tabpanel" hidden>
       <div class="card">
         <div class="listen-row">
-          <button class="primary" id="listenBtn">ابدأ الاستماع</button>
-          <div class="meter" title="مستوى الميكروفون"><div id="meter"></div></div>
+          <button class="primary" id="listenBtn" data-i18n="listen"></button>
+          <div class="meter"><div id="meter"></div></div>
         </div>
-        <p class="status" id="rxStatus">اضغط «ابدأ الاستماع» ثم ابدأ الإرسال من الهاتف الآخر.</p>
+        <p class="status" id="rxStatus" data-i18n="rxIdle"></p>
         <p class="muted small" id="rxStats"></p>
       </div>
 
       <div class="card" id="current" hidden>
-        <h2 id="curTitle">جاري الاستقبال…</h2>
+        <h2 id="curTitle"></h2>
         <p class="muted" id="curInfo"></p>
         <div class="bar"><div id="rxBar"></div></div>
         <div class="packets" id="packets"></div>
         <div id="curBody"></div>
       </div>
 
-      <div id="received"></div>
+      <div class="list-head">
+        <h2 data-i18n="received"></h2>
+        <button class="link" id="clearAll" data-i18n="clearAll"></button>
+      </div>
+      <div id="received"><p class="muted" data-i18n="empty"></p></div>
     </section>
 
     <!-- HELP -->
     <section id="tab-help" class="panel" role="tabpanel" hidden>
       <div class="card prose">
-        <h2>طريقة الاستخدام</h2>
-        <ol>
-          <li>افتح التطبيق على الهاتفين.</li>
-          <li>على الهاتف المستقبِل: «استقبال» ← «ابدأ الاستماع» واسمح باستخدام الميكروفون.</li>
-          <li>على الهاتف المرسِل: اختر النص أو الصورة أو الملف ثم «إرسال بالصوت».</li>
-          <li>ضع الهاتفين قريبين (10–50 سم)، مكبّر صوت المرسِل باتجاه ميكروفون المستقبِل.</li>
-        </ol>
-        <h3>نصائح</h3>
-        <ul>
-          <li>ارفع صوت المرسِل، وأطفئ وضع الصامت على آيفون.</li>
-          <li>ابدأ بالوضع «فائق». إذا ظهرت حزم تالفة كثيرة: قرّب الهاتفين، أو اختر وضعاً أبطأ.</li>
-          <li>«الحماية من الفقد» ترسل حزماً إضافية قليلة تُعيد بناء ما يضيع، فلا حاجة لإعادة الإرسال كاملاً.</li>
-          <li>الصور تُصغَّر قبل الإرسال؛ ترى في المعاينة الصورة كما ستصل بالضبط.</li>
-          <li>أصغر صورة = أسرع نقل: 200 بكسل بجودة 0.4 تكفي غالباً لمعرفة محتوى الصورة.</li>
-          <li>اترك الشاشة مفتوحة أثناء النقل.</li>
-        </ul>
-        <h3>كيف يعمل؟</h3>
-        <p>تُقسَّم البيانات إلى حزم صغيرة. كل حزمة تبدأ بصفّارة متصاعدة للمزامنة، ثم نغمات متوازية في 6–32 نطاقاً ترددياً بين 1.5 و10 كيلوهرتز. يحمي كل حزمة ترميز ريد-سولومون يصحح الأخطاء، وفحص CRC يتأكد من سلامتها، وحزم التصحيح الإضافية تعيد بناء الحزم الضائعة.</p>
+        <div data-i18n-html="helpHtml"></div>
         <table>
-          <thead><tr><th>الوضع</th><th>السرعة الفعلية</th><th>صورة 3 ك.ب</th></tr></thead>
+          <thead><tr><th data-i18n="thMode"></th><th data-i18n="thSpeed"></th><th data-i18n="thTime"></th></tr></thead>
           <tbody id="modeTable"></tbody>
         </table>
-        <p class="muted small">لا يرسل التطبيق أي بيانات عبر الإنترنت؛ كل المعالجة تتم داخل الهاتف.</p>
+        <div data-i18n-html="howHtml"></div>
       </div>
     </section>
   </main>

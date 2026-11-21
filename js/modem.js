@@ -19,6 +19,8 @@ export const MODES = [
   { id: 2, key: 'fast', ts: 0.016, tg: 0.006, groups: 8, tones: 16, f0: 1500, n: 248, nsym: 40 },
   // 32 groups of 4-FSK packed side by side: twice the bits per slot of 'fast'.
   { id: 3, key: 'turbo', ts: 0.016, tg: 0.006, groups: 32, tones: 4, f0: 1500, n: 224, nsym: 48 },
+  // Same as turbo over a wider band (1.5–13.5 kHz): needs speakers that reach high notes.
+  { id: 4, key: 'ultra', ts: 0.016, tg: 0.006, groups: 48, tones: 4, f0: 1500, n: 240, nsym: 48 },
 ];
 
 for (const m of MODES) {
@@ -47,7 +49,7 @@ const CHIRP_F1 = 6000;
 const GAP = 0.02;
 const MODE_TS = 0.04;
 const MODE_TG = 0.02;
-const MODE_FREQS = [1400, 2200, 3000, 3800];
+const MODE_FREQS = [1400, 2200, 3000, 3800, 4600, 5400];
 const RAMP = 0.002;
 const TAIL = 0.03;
 const DATA_START = CHIRP_DUR + GAP + MODE_TS + MODE_TG;

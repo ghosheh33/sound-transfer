@@ -1,6 +1,8 @@
-// Browser audio: microphone capture and scheduled playback of frames.
-import { modulate, frameDuration } from './modem.js';
-import { FRAME_PAUSE } from './protocol.js';
+// Browser audio: microphone capture, frame decoding and scheduled playback.
+// The microphone is switched off while this phone plays (iOS lowers or
+// reroutes the speaker while it records), so the link is half duplex.
+import { modulate, frameDuration, Receiver } from './modem.js';
+import { FRAME_PAUSE, parseFrame } from './protocol.js';
 
 const TAP_SRC = `
 class Tap extends AudioWorkletProcessor {
@@ -23,144 +25,226 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor('tap', Tap);
 `;
 
-function setAudioSession(type) {
-  try {
-    if (navigator.audioSession) navigator.audioSession.type = type;
-  } catch { /* not supported */ }
+function audioSession(type) {
+  try { if (navigator.audioSession) navigator.audioSession.type = type; } catch { /* unsupported */ }
 }
 
-/** Starts the microphone. Returns { sampleRate, stop() }. */
-export async function startMic(onSamples) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('no-mic-api');
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      channelCount: 1,
-    },
-  });
-  let ctx = new AudioContext();
-  let src;
-  try {
-    src = ctx.createMediaStreamSource(stream);
-  } catch {
-    // Firefox: the context must run at the microphone's rate.
-    await ctx.close();
-    const rate = stream.getAudioTracks()[0].getSettings().sampleRate;
-    ctx = new AudioContext({ sampleRate: rate });
-    src = ctx.createMediaStreamSource(stream);
-  }
-  await ctx.resume();
-  const sink = ctx.createGain();
-  sink.gain.value = 0;
-  sink.connect(ctx.destination);
-  let node;
-  if (ctx.audioWorklet) {
-    const url = URL.createObjectURL(new Blob([TAP_SRC], { type: 'application/javascript' }));
-    await ctx.audioWorklet.addModule(url);
-    URL.revokeObjectURL(url);
-    node = new AudioWorkletNode(ctx, 'tap');
-    node.port.onmessage = (e) => onSamples(e.data);
-  } else {
-    node = ctx.createScriptProcessor(4096, 1, 1);
-    node.onaudioprocess = (e) => onSamples(new Float32Array(e.inputBuffer.getChannelData(0)));
-  }
-  src.connect(node);
-  node.connect(sink);
-  return {
-    sampleRate: ctx.sampleRate,
-    stop() {
-      try { src.disconnect(); node.disconnect(); } catch { /* ignore */ }
-      stream.getTracks().forEach((t) => t.stop());
-      ctx.close();
-    },
-  };
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Plays a list of frame contents, `passes` times (Infinity = until stopped).
- * onProgress({ index, count, pass, done })
- */
-export class Transmitter {
-  constructor() {
+export class AudioLink {
+  /**
+   * handlers: onFrame({ content, mode, quality }), onFail(event), onSync(mode), onLevel(rms)
+   */
+  constructor(handlers = {}) {
+    this.h = handlers;
+    this.mic = null;
     this.ctx = null;
     this.gain = null;
-    this.timer = null;
+    this.volume = 0.9;
     this.sources = [];
+    this.playing = null;
   }
 
-  async _ensure() {
+  get micActive() {
+    return !!this.mic;
+  }
+
+  async micOn() {
+    if (this.mic) return;
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('no-mic-api');
+    audioSession('play-and-record');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+    });
+    let ctx = new AudioContext();
+    let src;
+    try {
+      src = ctx.createMediaStreamSource(stream);
+    } catch {
+      await ctx.close(); // Firefox: the context must run at the microphone's rate
+      ctx = new AudioContext({ sampleRate: stream.getAudioTracks()[0].getSettings().sampleRate });
+      src = ctx.createMediaStreamSource(stream);
+    }
+    await ctx.resume();
+    const rx = new Receiver(ctx.sampleRate, {
+      onFrame: (f) => this.h.onFrame?.(f),
+      onEvent: (e) => {
+        if (e.type === 'sync') this.h.onSync?.(e.mode);
+        else if (e.type === 'fail' && e.reason === 'decode') this.h.onFail?.(e);
+      },
+    });
+    const onSamples = (x) => {
+      let s = 0;
+      for (let i = 0; i < x.length; i++) s += x[i] * x[i];
+      this.h.onLevel?.(Math.sqrt(s / x.length));
+      rx.push(x);
+    };
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    sink.connect(ctx.destination);
+    let node;
+    if (ctx.audioWorklet) {
+      const url = URL.createObjectURL(new Blob([TAP_SRC], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      node = new AudioWorkletNode(ctx, 'tap');
+      node.port.onmessage = (e) => onSamples(e.data);
+    } else {
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = (e) => onSamples(new Float32Array(e.inputBuffer.getChannelData(0)));
+    }
+    src.connect(node);
+    node.connect(sink);
+    this.mic = { stream, ctx, src, node };
+  }
+
+  micOff() {
+    const m = this.mic;
+    if (!m) return;
+    this.mic = null;
+    try { m.src.disconnect(); m.node.disconnect(); } catch { /* ignore */ }
+    m.stream.getTracks().forEach((t) => t.stop());
+    m.ctx.close();
+    this.h.onLevel?.(0);
+  }
+
+  setVolume(v) {
+    this.volume = v;
+    if (this.gain) this.gain.gain.value = v;
+  }
+
+  async _ensureOut() {
     if (!this.ctx) {
       this.ctx = new AudioContext({ latencyHint: 'playback' });
       this.gain = this.ctx.createGain();
       this.gain.connect(this.ctx.destination);
     }
+    this.gain.gain.value = this.volume;
     await this.ctx.resume();
   }
 
-  setVolume(v) {
-    if (this.gain) this.gain.gain.value = v;
-    this.volume = v;
+  /** Must be called from a user gesture once, so later playback is allowed (iOS). */
+  async unlock() {
+    await this._ensureOut();
   }
 
-  get running() {
-    return this.timer !== null;
-  }
-
-  async start(frames, mode, passes, onProgress) {
+  /**
+   * Plays frames [{ content, mode }] back to back. onFrame(i) is called as
+   * frame i (1-based) finishes. Resolves true when done, false if stopped.
+   */
+  async play(frames, onFrame) {
     this.stop();
-    setAudioSession('playback');
-    await this._ensure();
-    this.gain.gain.value = this.volume ?? 0.9;
+    audioSession('playback');
+    await this._ensureOut();
     const ctx = this.ctx;
     const sr = ctx.sampleRate;
-    const step = frameDuration(mode) + FRAME_PAUSE;
-    let next = ctx.currentTime + 0.25;
-    let i = 0;
-    let pass = 0;
-    const schedule = [];
-    const tick = () => {
-      while (next < ctx.currentTime + 2.5 && pass < passes) {
-        const samples = modulate(frames[i], mode, sr);
-        const buf = ctx.createBuffer(1, samples.length, sr);
-        buf.copyToChannel(samples, 0);
-        const s = ctx.createBufferSource();
-        s.buffer = buf;
-        s.connect(this.gain);
-        s.start(next);
-        s.onended = () => { this.sources = this.sources.filter((x) => x !== s); };
-        this.sources.push(s);
-        schedule.push({ at: next, index: i, pass });
-        next += step;
-        i++;
-        if (i >= frames.length) { i = 0; pass++; }
-      }
-      const now = ctx.currentTime;
-      while (schedule.length > 1 && schedule[1].at <= now) schedule.shift();
-      const cur = schedule[0];
-      if (pass >= passes && (!cur || now > next)) {
-        this.stop();
-        onProgress({ index: frames.length, count: frames.length, pass: passes - 1, done: true });
-        return;
-      }
-      if (cur && cur.at <= now) {
-        const frac = Math.min(1, (now - cur.at) / step);
-        onProgress({ index: cur.index + frac, count: frames.length, pass: cur.pass, done: false });
-      }
-    };
-    this.timer = setInterval(tick, 150);
-    tick();
+    return new Promise((resolve) => {
+      let next = ctx.currentTime + 0.15;
+      let i = 0;
+      const ends = [];
+      let reported = 0;
+      const finish = (ok) => {
+        clearInterval(timer);
+        this.playing = null;
+        resolve(ok);
+      };
+      const tick = () => {
+        while (i < frames.length && next < ctx.currentTime + 2.5) {
+          const { content, mode } = frames[i];
+          const samples = modulate(content, mode, sr);
+          const buf = ctx.createBuffer(1, samples.length, sr);
+          buf.copyToChannel(samples, 0);
+          const s = ctx.createBufferSource();
+          s.buffer = buf;
+          s.connect(this.gain);
+          s.start(next);
+          this.sources.push(s);
+          s.onended = () => { this.sources = this.sources.filter((x) => x !== s); };
+          next += frameDuration(mode) + FRAME_PAUSE;
+          ends.push(next);
+          i++;
+        }
+        const now = ctx.currentTime;
+        while (reported < ends.length && ends[reported] <= now) {
+          reported++;
+          onFrame?.(reported);
+        }
+        if (reported >= frames.length) finish(true);
+      };
+      const timer = setInterval(tick, 100);
+      this.playing = { stop: () => finish(false) };
+      tick();
+    });
   }
 
   stop() {
-    if (this.timer !== null) clearInterval(this.timer);
-    this.timer = null;
     for (const s of this.sources) {
       try { s.stop(); } catch { /* already stopped */ }
     }
     this.sources = [];
+    if (this.playing) this.playing.stop();
   }
+}
+
+/** I/O for the sending phone: microphone only while waiting for a reply. */
+export function senderIO(link) {
+  const io = {
+    stopped: false,
+    listener: null,
+    async play(frames, onFrame) {
+      link.micOff();
+      if (io.stopped) return false;
+      const ok = await link.play(frames, onFrame);
+      return ok && !io.stopped;
+    },
+    async listen(ms, accept) {
+      if (io.stopped) return null;
+      try {
+        await link.micOn();
+      } catch {
+        return null;
+      }
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => done(null), ms);
+        const done = (v) => {
+          clearTimeout(timer);
+          io.listener = null;
+          link.micOff();
+          resolve(v);
+        };
+        io.listener = (f) => { if (accept(f)) done(f); };
+        io.cancel = () => done(null);
+      });
+    },
+    stop() {
+      io.stopped = true;
+      link.stop();
+      io.cancel?.();
+    },
+    /** Route decoded frames here while listening. */
+    frame({ content }) {
+      if (!io.listener) return;
+      const f = parseFrame(content);
+      if (f) io.listener(f);
+    },
+  };
+  return io;
+}
+
+/** I/O for the receiving phone: answers after a pause, then keeps listening. */
+export function receiverIO(link, { replyDelay = 1300 } = {}) {
+  return {
+    async reply(content, mode) {
+      const wasOn = link.micActive;
+      await sleep(replyDelay); // let the sender switch its microphone on
+      link.micOff();
+      try {
+        await link.play([{ content, mode }]);
+      } finally {
+        if (wasOn) {
+          try { await link.micOn(); } catch { /* permission lost */ }
+        }
+      }
+    },
+  };
 }
